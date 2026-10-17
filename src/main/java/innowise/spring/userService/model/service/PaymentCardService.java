@@ -12,6 +12,8 @@ import innowise.spring.userService.model.repository.PaymentCardRepository;
 import innowise.spring.userService.model.repository.UserRepository;
 import innowise.spring.userService.model.repository.spec.PaymentCardSpecifications;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -32,6 +34,7 @@ public class PaymentCardService {
     private final PaymentCardMapper cardMapper;
 
     @Transactional
+    @CacheEvict(value = "cards", key = "#dto.userId")
     public CardResponseDto create(CardCreateDto dto) {
         User user = userRepository.findById(dto.getUserId())
                 .orElseThrow(() -> new EntityNotFoundException("User not found: " + dto.getUserId()));
@@ -49,6 +52,7 @@ public class PaymentCardService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "cards", key = "#userId")
     public List<CardResponseDto> getAllByUserId(UUID userId) {
         return cardRepository.findAllByUserId(userId).stream().map(cardMapper::toResponse).toList();
     }
@@ -66,6 +70,7 @@ public class PaymentCardService {
     }
 
     @Transactional
+    @CacheEvict(value = "cards", allEntries = true)
     public CardResponseDto update(UUID id, CardUpdateDto dto) {
         PaymentCard card = findOrThrow(id);
         cardMapper.updateEntity(dto, card);
@@ -73,11 +78,13 @@ public class PaymentCardService {
     }
 
     @Transactional
+    @CacheEvict(value = "cards", allEntries = true)
     public void delete(UUID id) {
         cardRepository.delete(findOrThrow(id));
     }
 
     @Transactional
+    @CacheEvict(value = "cards", allEntries = true)
     public CardResponseDto activate(UUID id) {
         PaymentCard card = findOrThrow(id);
         if (cardRepository.countByUserIdAndActiveTrue(card.getUser().getId()) >= MAX_CARDS_PER_USER) {
@@ -88,6 +95,7 @@ public class PaymentCardService {
     }
 
     @Transactional
+    @CacheEvict(value = "cards", allEntries = true)
     public CardResponseDto deactivate(UUID id) {
         PaymentCard card = findOrThrow(id);
         card.setActive(false);

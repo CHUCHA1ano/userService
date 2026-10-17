@@ -10,6 +10,9 @@ import innowise.spring.userService.model.repository.PaymentCardRepository;
 import innowise.spring.userService.model.repository.UserRepository;
 import innowise.spring.userService.model.repository.spec.UserSpecifications;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -37,6 +40,7 @@ public class UserService {
     }
 
     @Transactional(readOnly = true)
+    @Cacheable(value = "users", key = "#id")
     public UserResponseDto getById(UUID id) {
         return userMapper.toResponse(findOrThrow(id));
     }
@@ -57,6 +61,10 @@ public class UserService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id"),
+        @CacheEvict(value = "cards", key = "#id")
+    })
     public UserResponseDto update(UUID id, UserUpdateDto dto) {
         User user = findOrThrow(id);
         userMapper.updateEntity(dto, user);
@@ -64,12 +72,20 @@ public class UserService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id"),
+        @CacheEvict(value = "cards", key = "#id")
+    })
     public void delete(UUID id) {
         User user = findOrThrow(id);
         userRepository.delete(user);
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id"),
+        @CacheEvict(value = "cards", key = "#id")
+    })
     public UserResponseDto activate(UUID id) {
         User user = findOrThrow(id);
         user.setActive(true);
@@ -77,6 +93,10 @@ public class UserService {
     }
 
     @Transactional
+    @Caching(evict = {
+        @CacheEvict(value = "users", key = "#id"),
+        @CacheEvict(value = "cards", key = "#id")
+    })
     public UserResponseDto deactivate(UUID id) {
         User user = findOrThrow(id);
         user.setActive(false);
