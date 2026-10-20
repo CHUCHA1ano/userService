@@ -1,11 +1,13 @@
 package innowise.spring.userService.model.dto;
 
 import jakarta.validation.constraints.Pattern;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
 @Data
 @Builder
+@AllArgsConstructor
 public class CardUpdateDto {
     @Pattern(regexp = "\\d{13,19}", message = "Card number must contain 13-19 digits")
     private String number;

@@ -2,6 +2,7 @@ package innowise.spring.userService.model.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Past;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,6 +10,7 @@ import java.time.LocalDate;
 
 @Data
 @Builder
+@AllArgsConstructor
 public class UserUpdateDto {
     private String name;
 

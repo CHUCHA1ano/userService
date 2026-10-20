@@ -3,6 +3,7 @@ package innowise.spring.userService.model.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 
@@ -10,6 +11,7 @@ import java.util.UUID;
 
 @Data
 @Builder
+@AllArgsConstructor
 public class CardCreateDto {
     @NotNull(message = "User id cannot be null")
     private UUID userId;
