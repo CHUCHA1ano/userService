@@ -45,12 +45,20 @@ services:
       - "8081:8081"
     environment:
       - SPRING_PROFILES_ACTIVE=docker
+      - KEYCLOAK_ADMIN_URL=http://keycloak:8080
+      - KEYCLOAK_JWK_SET_URI=http://keycloak:8080/realms/jacapp/protocol/openid-connect/certs
+      - KEYCLOAK_CLIENT_SECRET=jacapp-backend-secret
     networks:
       - user-service-network
+      - jacapp-auth-network
 
 networks:
   user-service-network:
     driver: bridge
+  # Created by authService/docker-compose.yaml (name: jacapp-auth-network).
+  # Start authService first: `docker compose up -d` in the authService repository.
+  jacapp-auth-network:
+    external: true
 
 volumes:
   postgres_data:

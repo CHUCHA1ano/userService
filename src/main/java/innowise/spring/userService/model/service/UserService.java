@@ -1,6 +1,7 @@
 package innowise.spring.userService.model.service;
 
 import innowise.spring.userService.exception.EntityNotFoundException;
+import innowise.spring.userService.integration.keycloak.KeycloakAdminClient;
 import innowise.spring.userService.model.dto.UserCreateDto;
 import innowise.spring.userService.model.dto.UserResponseDto;
 import innowise.spring.userService.model.dto.UserUpdateDto;
@@ -30,13 +31,30 @@ public class UserService {
     private final UserRepository userRepository;
     private final PaymentCardRepository paymentCardRepository;
     private final UserMapper userMapper;
+    private final KeycloakAdminClient keycloakAdminClient;
 
+    @Transactional
     public UserResponseDto create(UserCreateDto dto) {
         if (userRepository.existsByEmail(dto.getEmail())) {
             throw new IllegalArgumentException("Email already in use: " + dto.getEmail());
         }
-        User saved = userRepository.save(userMapper.toEntity(dto));
-        return userMapper.toResponse(saved);
+
+        // Keycloak owns credentials and generates the user id. It is reused as the local id,
+        // so the JWT subject matches the id used by user-scoped endpoints.
+        UUID keycloakId = keycloakAdminClient.createUser(dto.getEmail(), dto.getPassword());
+        try {
+            User user = userMapper.toEntity(dto);
+            user.setId(keycloakId);
+            User saved = userRepository.saveAndFlush(user);
+            return userMapper.toResponse(saved);
+        } catch (RuntimeException ex) {
+            try {
+                keycloakAdminClient.deleteUser(keycloakId);
+            } catch (RuntimeException ignored) {
+                // best-effort compensation
+            }
+            throw ex;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +85,12 @@ public class UserService {
     })
     public UserResponseDto update(UUID id, UserUpdateDto dto) {
         User user = findOrThrow(id);
+        if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(dto.getEmail())) {
+                throw new IllegalArgumentException("Email already in use: " + dto.getEmail());
+            }
+            keycloakAdminClient.updateEmail(id, dto.getEmail());
+        }
         userMapper.updateEntity(dto, user);
         return userMapper.toResponse(userRepository.save(user));
     }
@@ -78,6 +102,7 @@ public class UserService {
     })
     public void delete(UUID id) {
         User user = findOrThrow(id);
+        keycloakAdminClient.deleteUser(id);
         userRepository.delete(user);
     }
 
@@ -88,6 +113,7 @@ public class UserService {
     })
     public UserResponseDto activate(UUID id) {
         User user = findOrThrow(id);
+        keycloakAdminClient.setEnabled(id, true);
         user.setActive(true);
         return userMapper.toResponse(userRepository.save(user));
     }
@@ -99,6 +125,9 @@ public class UserService {
     })
     public UserResponseDto deactivate(UUID id) {
         User user = findOrThrow(id);
+        keycloakAdminClient.setEnabled(id, false);
+        // Access tokens live for 12 hours; revoke the sessions so the change takes effect now.
+        keycloakAdminClient.logoutUser(id);
         user.setActive(false);
         paymentCardRepository.deactivateAllByUserId(id);
         return userMapper.toResponse(userRepository.save(user));

@@ -2,6 +2,7 @@ package innowise.spring.userService.service;
 
 import innowise.spring.userService.exception.CardLimitExceededException;
 import innowise.spring.userService.exception.EntityNotFoundException;
+import innowise.spring.userService.integration.keycloak.KeycloakAdminClient;
 import innowise.spring.userService.model.dto.CardCreateDto;
 import innowise.spring.userService.model.dto.CardResponseDto;
 import innowise.spring.userService.model.dto.CardUpdateDto;
@@ -46,6 +47,9 @@ class UserServiceTest {
     @Mock
     private UserMapper userMapper;
 
+    @Mock
+    private KeycloakAdminClient keycloakAdminClient;
+
     @InjectMocks
     private innowise.spring.userService.model.service.UserService userService;
 
@@ -70,6 +74,7 @@ class UserServiceTest {
                 .name("John")
                 .surname("Doe")
                 .email("john@example.com")
+                .password("password123")
                 .birthDate(LocalDate.of(1990, 1, 1))
                 .build();
 
@@ -89,8 +94,9 @@ class UserServiceTest {
     @Test
     void create_shouldReturnUserResponseDto_whenDtoIsValid() {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
+        when(keycloakAdminClient.createUser("john@example.com", "password123")).thenReturn(userId);
         when(userMapper.toEntity(any(UserCreateDto.class))).thenReturn(user);
-        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(userRepository.saveAndFlush(any(User.class))).thenReturn(user);
         when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
 
         UserResponseDto result = userService.create(createDto);
@@ -98,7 +104,8 @@ class UserServiceTest {
         assertNotNull(result);
         assertEquals(userId, result.getId());
         verify(userRepository).existsByEmail("john@example.com");
-        verify(userRepository).save(any(User.class));
+        verify(keycloakAdminClient).createUser("john@example.com", "password123");
+        verify(userRepository).saveAndFlush(any(User.class));
     }
 
     @Test

@@ -4,6 +4,7 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Past;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -29,4 +30,8 @@ public class UserCreateDto {
     @NotBlank(message = "Email cannot be empty")
     @Email(message = "Email must be valid")
     private String email;
+
+    @NotBlank(message = "Password cannot be empty")
+    @Size(min = 8, max = 72, message = "Password must contain from 8 to 72 characters")
+    private String password;
 }

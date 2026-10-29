@@ -3,8 +3,6 @@ package innowise.spring.userService.model.entity;
 import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
@@ -32,8 +30,11 @@ import java.util.UUID;
 @Table(name = "users")
 public class User extends BaseEntity {
 
+    /**
+     * The id is assigned from Keycloak: the JWT {@code sub} claim is the same UUID,
+     * so user-scoped endpoints can use it without an extra mapping table.
+     */
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
     @NotBlank(message = "Name cannot be empty")

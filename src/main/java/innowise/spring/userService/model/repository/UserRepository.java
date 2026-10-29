@@ -20,6 +20,8 @@ public interface UserRepository extends JpaRepository<User, UUID>, JpaSpecificat
 
     boolean existsByEmail(String email);
 
+    boolean existsByIdAndActiveTrue(UUID id);
+
     //JPQL
     @Query("select u from User u left join fetch u.cards where u.id = :id")
     Optional<User> findByIdWithCards(UUID id);
