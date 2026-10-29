@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: user-service-postgres
+    environment:
+      POSTGRES_DB: userdb
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 11553303
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d userdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - user-service-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: user-service-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - user-service-network
+
+  app:
+    build: .
+    container_name: user-service-app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+      - KEYCLOAK_ADMIN_URL=http://keycloak:8080
+      - KEYCLOAK_JWK_SET_URI=http://keycloak:8080/realms/jacapp/protocol/openid-connect/certs
+      - KEYCLOAK_CLIENT_SECRET=jacapp-backend-secret
+    networks:
+      - user-service-network
+      - jacapp-auth-network
+
+networks:
+  user-service-network:
+    driver: bridge
+  # Created by authService/docker-compose.yaml (name: jacapp-auth-network).
+  # Start authService first: `docker compose up -d` in the authService repository.
+  jacapp-auth-network:
+    external: true
+
+volumes:
+  postgres_data:
