@@ -94,7 +94,7 @@ class UserServiceTest {
     @Test
     void create_shouldReturnUserResponseDto_whenDtoIsValid() {
         when(userRepository.existsByEmail(anyString())).thenReturn(false);
-        when(keycloakAdminClient.createUser("john@example.com", "password123")).thenReturn(userId);
+        when(keycloakAdminClient.createUser("john@example.com", "password123", "John", "Doe")).thenReturn(userId);
         when(userMapper.toEntity(any(UserCreateDto.class))).thenReturn(user);
         when(userRepository.saveAndFlush(any(User.class))).thenReturn(user);
         when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
@@ -104,7 +104,7 @@ class UserServiceTest {
         assertNotNull(result);
         assertEquals(userId, result.getId());
         verify(userRepository).existsByEmail("john@example.com");
-        verify(keycloakAdminClient).createUser("john@example.com", "password123");
+        verify(keycloakAdminClient).createUser("john@example.com", "password123", "John", "Doe");
         verify(userRepository).saveAndFlush(any(User.class));
     }
 

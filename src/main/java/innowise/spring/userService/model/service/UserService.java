@@ -20,6 +20,7 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -41,7 +42,8 @@ public class UserService {
 
         // Keycloak owns credentials and generates the user id. It is reused as the local id,
         // so the JWT subject matches the id used by user-scoped endpoints.
-        UUID keycloakId = keycloakAdminClient.createUser(dto.getEmail(), dto.getPassword());
+        UUID keycloakId = keycloakAdminClient.createUser(
+                dto.getEmail(), dto.getPassword(), dto.getName(), dto.getSurname());
         try {
             User user = userMapper.toEntity(dto);
             user.setId(keycloakId);
@@ -85,12 +87,22 @@ public class UserService {
     })
     public UserResponseDto update(UUID id, UserUpdateDto dto) {
         User user = findOrThrow(id);
-        if (dto.getEmail() != null && !dto.getEmail().equals(user.getEmail())) {
-            if (userRepository.existsByEmail(dto.getEmail())) {
-                throw new IllegalArgumentException("Email already in use: " + dto.getEmail());
-            }
-            keycloakAdminClient.updateEmail(id, dto.getEmail());
+
+        String newEmail = dto.getEmail() != null ? dto.getEmail() : user.getEmail();
+        String newName = dto.getName() != null ? dto.getName() : user.getName();
+        String newSurname = dto.getSurname() != null ? dto.getSurname() : user.getSurname();
+
+        boolean emailChanged = !newEmail.equals(user.getEmail());
+        if (emailChanged && userRepository.existsByEmail(newEmail)) {
+            throw new IllegalArgumentException("Email already in use: " + newEmail);
         }
+        boolean profileChanged = emailChanged
+                || !Objects.equals(newName, user.getName())
+                || !Objects.equals(newSurname, user.getSurname());
+        if (profileChanged) {
+            keycloakAdminClient.updateProfile(id, newEmail, newName, newSurname);
+        }
+
         userMapper.updateEntity(dto, user);
         return userMapper.toResponse(userRepository.save(user));
     }

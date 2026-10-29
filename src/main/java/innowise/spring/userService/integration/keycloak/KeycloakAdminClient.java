@@ -19,6 +19,7 @@ import org.springframework.web.client.RestClientResponseException;
 
 import java.net.URI;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -55,10 +56,14 @@ public class KeycloakAdminClient {
      *
      * @return Keycloak user id, which is also used as the local user id
      */
-    public UUID createUser(String email, String password) {
+    public UUID createUser(String email, String password, String firstName, String lastName) {
+        // Keycloak 26 declarative user profile requires firstName/lastName for users with the
+        // "user" role, otherwise login fails with "Account is not fully set up".
         KeycloakUserRequest request = new KeycloakUserRequest(
                 email,
                 email,
+                firstName,
+                lastName,
                 true,
                 true,
                 List.of(new CredentialRepresentation(PASSWORD_CREDENTIAL, password, false))
@@ -88,12 +93,17 @@ public class KeycloakAdminClient {
         }
     }
 
-    public void updateEmail(UUID userId, String email) {
+    public void updateProfile(UUID userId, String email, String firstName, String lastName) {
+        Map<String, Object> body = new HashMap<>();
+        body.put("username", email);
+        body.put("email", email);
+        body.put("firstName", firstName);
+        body.put("lastName", lastName);
         execute("update user", () -> restClient.put()
                 .uri("/admin/realms/{realm}/users/{id}", properties.realm(), userId)
                 .header(HttpHeaders.AUTHORIZATION, bearer())
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("email", email, "username", email))
+                .body(body)
                 .retrieve()
                 .toBodilessEntity());
     }
