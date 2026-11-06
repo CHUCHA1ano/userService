@@ -6,4 +6,5 @@
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
     <include file="db/changelog/changes/001-create-users-table.xml" relativeToChangelogFile="false"/>
     <include file="db/changelog/changes/002-create-payment-cards-table.xml" relativeToChangelogFile="false"/>
+    <include file="db/changelog/changes/003-alter-expiration-date-to-date.xml" relativeToChangelogFile="false"/>
 </databaseChangeLog>
