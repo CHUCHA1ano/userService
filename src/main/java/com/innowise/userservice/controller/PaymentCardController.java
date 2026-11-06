@@ -18,33 +18,42 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Card endpoints follow the API spec: creating and listing a user's cards live under
+ * /api/users/{userId}/cards, while id-scoped operations stay under /api/cards/{id}.
+ */
 @RestController
-@RequestMapping("/api/cards")
 @RequiredArgsConstructor
 public class PaymentCardController {
 
     private final PaymentCardService cardService;
 
-    @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or @access.isSelf(#dto.userId, authentication)")
-    public ResponseEntity<CardResponseDto> create(@Valid @RequestBody CardCreateDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(cardService.create(dto));
+    @PostMapping("/api/users/{userId}/cards")
+    @PreAuthorize("hasRole('ADMIN') or @access.isSelf(#userId, authentication)")
+    public ResponseEntity<CardResponseDto> create(@PathVariable UUID userId,
+                                                  @Valid @RequestBody CardCreateDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cardService.create(userId, dto));
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/api/users/{userId}/cards")
+    @PreAuthorize("hasRole('ADMIN') or @access.isSelf(#userId, authentication)")
+    public ResponseEntity<List<CardResponseDto>> getAllByUserId(@PathVariable UUID userId) {
+        return ResponseEntity.ok(cardService.getAllByUserId(userId));
+    }
+
+    @GetMapping("/api/cards/{id}")
     @PreAuthorize("hasRole('ADMIN') or @access.isCardOwner(#id, authentication)")
     public ResponseEntity<CardResponseDto> getById(@PathVariable UUID id) {
         return ResponseEntity.ok(cardService.getById(id));
     }
 
-    @GetMapping
+    @GetMapping("/api/cards")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Page<CardResponseDto>> getAll(
             @RequestParam(required = false) UUID userId,
@@ -53,33 +62,27 @@ public class PaymentCardController {
         return ResponseEntity.ok(cardService.getAll(userId, active, pageable));
     }
 
-    @GetMapping("/user/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or @access.isSelf(#userId, authentication)")
-    public ResponseEntity<List<CardResponseDto>> getAllByUserId(@PathVariable UUID userId) {
-        return ResponseEntity.ok(cardService.getAllByUserId(userId));
-    }
-
-    @PutMapping("/{id}")
+    @PutMapping("/api/cards/{id}")
     @PreAuthorize("hasRole('ADMIN') or @access.isCardOwner(#id, authentication)")
     public ResponseEntity<CardResponseDto> update(@PathVariable UUID id,
                                                   @Valid @RequestBody CardUpdateDto dto) {
         return ResponseEntity.ok(cardService.update(id, dto));
     }
 
-    @DeleteMapping("/{id}")
+    @DeleteMapping("/api/cards/{id}")
     @PreAuthorize("hasRole('ADMIN') or @access.isCardOwner(#id, authentication)")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         cardService.delete(id);
         return ResponseEntity.noContent().build();
     }
 
-    @PatchMapping("/{id}/activate")
+    @PatchMapping("/api/cards/{id}/activate")
     @PreAuthorize("hasRole('ADMIN') or @access.isCardOwner(#id, authentication)")
     public ResponseEntity<CardResponseDto> activate(@PathVariable UUID id) {
         return ResponseEntity.ok(cardService.activate(id));
     }
 
-    @PatchMapping("/{id}/deactivate")
+    @PatchMapping("/api/cards/{id}/deactivate")
     @PreAuthorize("hasRole('ADMIN') or @access.isCardOwner(#id, authentication)")
     public ResponseEntity<CardResponseDto> deactivate(@PathVariable UUID id) {
         return ResponseEntity.ok(cardService.deactivate(id));

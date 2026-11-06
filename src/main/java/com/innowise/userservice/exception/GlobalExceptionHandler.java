@@ -4,6 +4,7 @@ import com.innowise.userservice.exception.CardLimitExceededException;
 import com.innowise.userservice.exception.CardNotFoundException;
 import com.innowise.userservice.exception.EmailAlreadyExistsException;
 import com.innowise.userservice.exception.KeycloakIntegrationException;
+import com.innowise.userservice.exception.UserInactiveException;
 import com.innowise.userservice.exception.UserNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -23,6 +24,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({UserNotFoundException.class, CardNotFoundException.class})
     public ResponseEntity<Map<String, Object>> handleNotFound(RuntimeException ex) {
         return body(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
+    @ExceptionHandler(UserInactiveException.class)
+    public ResponseEntity<Map<String, Object>> handleInactiveUser(UserInactiveException ex) {
+        return body(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
     @ExceptionHandler({EmailAlreadyExistsException.class, CardLimitExceededException.class})

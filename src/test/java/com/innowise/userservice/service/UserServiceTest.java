@@ -2,6 +2,7 @@ package com.innowise.userservice.service;
 
 import com.innowise.userservice.exception.CardLimitExceededException;
 import com.innowise.userservice.exception.EmailAlreadyExistsException;
+import com.innowise.userservice.exception.KeycloakIntegrationException;
 import com.innowise.userservice.exception.UserNotFoundException;
 import com.innowise.userservice.integration.keycloak.KeycloakAdminClient;
 import com.innowise.userservice.model.dto.CardCreateDto;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.Page;
@@ -26,6 +28,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.transaction.support.TransactionCallback;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -51,6 +55,9 @@ class UserServiceTest {
     @Mock
     private KeycloakAdminClient keycloakAdminClient;
 
+    @Mock
+    private TransactionTemplate transactionTemplate;
+
     @InjectMocks
     private com.innowise.userservice.service.UserService userService;
 
@@ -62,6 +69,12 @@ class UserServiceTest {
 
     @BeforeEach
     void setUp() {
+        // run the callback right away, no real transaction in unit tests
+        lenient().when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(null);
+        });
+
         userId = UUID.randomUUID();
         user = new User();
         user.setId(userId);
@@ -118,7 +131,7 @@ class UserServiceTest {
 
     @Test
     void getById_shouldReturnUserResponseDto_whenUserExists() {
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdWithCards(userId)).thenReturn(Optional.of(user));
         when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
 
         UserResponseDto result = userService.getById(userId);
@@ -129,7 +142,7 @@ class UserServiceTest {
 
     @Test
     void getById_shouldThrowUserNotFoundException_whenUserNotFound() {
-        when(userRepository.findById(userId)).thenReturn(Optional.empty());
+        when(userRepository.findByIdWithCards(userId)).thenReturn(Optional.empty());
 
         assertThrows(UserNotFoundException.class, () -> userService.getById(userId));
     }
@@ -236,5 +249,115 @@ class UserServiceTest {
         assertNotNull(result);
         assertEquals(1, result.getTotalElements());
         assertEquals(1, result.getContent().size());
+    }
+
+    @Test
+    void update_shouldSaveLocallyBeforeCallingKeycloak() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
+
+        userService.update(userId, updateDto);
+
+        InOrder order = inOrder(userRepository, keycloakAdminClient);
+        order.verify(userRepository).save(user);
+        order.verify(keycloakAdminClient).updateProfile(userId, "john@example.com", "Jane", "Doe");
+    }
+
+    @Test
+    void update_shouldRevertLocalChanges_whenKeycloakUpdateFails() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenReturn(user);
+        when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
+        doThrow(new KeycloakIntegrationException("Keycloak failed to update user (503)"))
+                .when(keycloakAdminClient).updateProfile(eq(userId), anyString(), anyString(), anyString());
+
+        assertThrows(KeycloakIntegrationException.class, () -> userService.update(userId, updateDto));
+
+        // local write happened first, then was compensated back after the Keycloak failure
+        verify(userRepository, times(2)).save(user);
+    }
+
+    @Test
+    void create_shouldDeleteKeycloakUser_whenLocalPersistFails() {
+        when(keycloakAdminClient.createUser("john@example.com", "password123", "John", "Doe"))
+                .thenReturn(userId);
+        when(userMapper.toEntity(any(UserCreateDto.class))).thenReturn(user);
+        when(userRepository.saveAndFlush(any(User.class))).thenThrow(new IllegalStateException("persist failed"));
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> userService.create(createDto));
+
+        assertEquals("persist failed", thrown.getMessage());
+        verify(keycloakAdminClient).deleteUser(userId);
+    }
+
+    @Test
+    void create_shouldRethrowOriginalFailure_whenCompensationAlsoFails() {
+        when(keycloakAdminClient.createUser(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn(userId);
+        when(userMapper.toEntity(any(UserCreateDto.class))).thenReturn(user);
+        when(userRepository.saveAndFlush(any(User.class))).thenThrow(new IllegalStateException("persist failed"));
+        doThrow(new RuntimeException("keycloak down")).when(keycloakAdminClient).deleteUser(userId);
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> userService.create(createDto));
+
+        // the compensation failure is logged, not swallowed as the response
+        assertEquals("persist failed", thrown.getMessage());
+        verify(keycloakAdminClient).deleteUser(userId);
+    }
+
+    @Test
+    void activate_shouldRevertLocalChanges_whenKeycloakFails() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
+        doThrow(new KeycloakIntegrationException("Keycloak failed to change user state (503)"))
+                .when(keycloakAdminClient).setEnabled(userId, true);
+
+        assertThrows(KeycloakIntegrationException.class, () -> userService.activate(userId));
+
+        // user was written as active, then compensated back to inactive
+        assertFalse(user.getActive());
+        verify(userRepository, times(2)).save(user);
+    }
+
+    @Test
+    void deactivate_shouldRevertLocalChangesAndCards_whenKeycloakFails() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userMapper.toResponse(any(User.class))).thenReturn(responseDto);
+        when(paymentCardRepository.deactivateAllByUserId(userId)).thenReturn(0);
+        doThrow(new KeycloakIntegrationException("Keycloak failed to change user state (503)"))
+                .when(keycloakAdminClient).setEnabled(userId, false);
+
+        assertThrows(KeycloakIntegrationException.class, () -> userService.deactivate(userId));
+
+        assertTrue(user.getActive());
+        verify(paymentCardRepository).reactivateAllByUserId(userId);
+        // logout only happens after both Keycloak calls succeed
+        verify(keycloakAdminClient, never()).logoutUser(any(UUID.class));
+    }
+
+    @Test
+    void delete_shouldDeleteKeycloakUserFirst_thenLocally() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        userService.delete(userId);
+
+        InOrder order = inOrder(keycloakAdminClient, userRepository);
+        order.verify(keycloakAdminClient).deleteUser(userId);
+        order.verify(userRepository).delete(user);
+    }
+
+    @Test
+    void delete_shouldRethrow_whenLocalDeleteFailsAfterKeycloakDelete() {
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        doThrow(new RuntimeException("db down")).when(userRepository).delete(any(User.class));
+
+        assertThrows(RuntimeException.class, () -> userService.delete(userId));
+
+        verify(keycloakAdminClient).deleteUser(userId);
     }
 }

@@ -2,6 +2,7 @@ package com.innowise.userservice.service;
 
 import com.innowise.userservice.exception.CardLimitExceededException;
 import com.innowise.userservice.exception.CardNotFoundException;
+import com.innowise.userservice.exception.UserInactiveException;
 import com.innowise.userservice.exception.UserNotFoundException;
 import com.innowise.userservice.model.dto.CardCreateDto;
 import com.innowise.userservice.model.dto.CardResponseDto;
@@ -17,6 +18,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -38,6 +41,15 @@ class PaymentCardServiceTest {
 
     @Mock
     private PaymentCardMapper cardMapper;
+
+    @Mock
+    private CacheManager cacheManager;
+
+    @Mock
+    private Cache cardsCache;
+
+    @Mock
+    private Cache usersCache;
 
     @InjectMocks
     private com.innowise.userservice.service.PaymentCardService cardService;
@@ -68,7 +80,6 @@ class PaymentCardServiceTest {
         card.setActive(true);
 
         createDto = CardCreateDto.builder()
-                .userId(userId)
                 .number("4111111111111111")
                 .holder("John Doe")
                 .expirationDate(LocalDate.of(2030, 12, 1))
@@ -86,6 +97,9 @@ class PaymentCardServiceTest {
                 .expirationDate(LocalDate.of(2030, 12, 1))
                 .active(true)
                 .build();
+
+        lenient().when(cacheManager.getCache("cards")).thenReturn(cardsCache);
+        lenient().when(cacheManager.getCache("users")).thenReturn(usersCache);
     }
 
     @Test
@@ -96,13 +110,15 @@ class PaymentCardServiceTest {
         when(cardRepository.save(any(PaymentCard.class))).thenReturn(card);
         when(cardMapper.toResponse(any(PaymentCard.class))).thenReturn(responseDto);
 
-        CardResponseDto result = cardService.create(createDto);
+        CardResponseDto result = cardService.create(userId, createDto);
 
         assertNotNull(result);
         assertEquals(cardId, result.getId());
         assertEquals(userId, result.getUserId());
         verify(cardRepository).countByUserIdAndActiveTrue(userId);
         verify(cardRepository).save(any(PaymentCard.class));
+        verify(cardsCache).evict(userId);
+        verify(usersCache).evict(userId);
     }
 
     @Test
@@ -110,14 +126,23 @@ class PaymentCardServiceTest {
         when(userRepository.findById(userId)).thenReturn(Optional.of(user));
         when(cardRepository.countByUserIdAndActiveTrue(userId)).thenReturn(5L);
 
-        assertThrows(CardLimitExceededException.class, () -> cardService.create(createDto));
+        assertThrows(CardLimitExceededException.class, () -> cardService.create(userId, createDto));
     }
 
     @Test
     void create_shouldThrowUserNotFoundException_whenUserNotFound() {
         when(userRepository.findById(userId)).thenReturn(Optional.empty());
 
-        assertThrows(UserNotFoundException.class, () -> cardService.create(createDto));
+        assertThrows(UserNotFoundException.class, () -> cardService.create(userId, createDto));
+    }
+
+    @Test
+    void create_shouldThrowUserInactiveException_whenUserIsNotActive() {
+        user.setActive(false);
+        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+
+        assertThrows(UserInactiveException.class, () -> cardService.create(userId, createDto));
+        verifyNoInteractions(cardRepository, cardMapper);
     }
 
     @Test
@@ -161,6 +186,8 @@ class PaymentCardServiceTest {
         assertNotNull(result);
         verify(cardMapper).updateEntity(updateDto, card);
         verify(cardRepository).save(card);
+        verify(cardsCache).evict(userId);
+        verify(usersCache).evict(userId);
     }
 
     @Test
@@ -189,6 +216,7 @@ class PaymentCardServiceTest {
 
     @Test
     void activate_shouldReturnActiveCardResponseDto_whenCardExists() {
+        card.setActive(false);
         when(cardRepository.findById(cardId)).thenReturn(Optional.of(card));
         when(cardRepository.countByUserIdAndActiveTrue(userId)).thenReturn(0L);
         when(cardRepository.save(any(PaymentCard.class))).thenReturn(card);
@@ -202,10 +230,26 @@ class PaymentCardServiceTest {
 
     @Test
     void activate_shouldThrowCardLimitExceededException_whenLimitReached() {
+        card.setActive(false);
         when(cardRepository.findById(cardId)).thenReturn(Optional.of(card));
         when(cardRepository.countByUserIdAndActiveTrue(userId)).thenReturn(5L);
 
         assertThrows(CardLimitExceededException.class, () -> cardService.activate(cardId));
+    }
+
+    @Test
+    void activate_shouldReturnCardImmediately_whenAlreadyActive() {
+        when(cardRepository.findById(cardId)).thenReturn(Optional.of(card));
+        when(cardMapper.toResponse(card)).thenReturn(responseDto);
+
+        CardResponseDto result = cardService.activate(cardId);
+
+        assertNotNull(result);
+        assertEquals(cardId, result.getId());
+        verify(cardRepository, never()).countByUserIdAndActiveTrue(any());
+        verify(cardRepository, never()).save(any());
+        verify(cardsCache).evict(userId);
+        verify(usersCache).evict(userId);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.innowise.userservice.controller;
 
 import com.innowise.userservice.model.dto.UserCreateDto;
 import com.innowise.userservice.model.dto.UserResponseDto;
+import com.innowise.userservice.model.dto.UserStatusUpdateDto;
 import com.innowise.userservice.model.dto.UserUpdateDto;
 import com.innowise.userservice.service.UserService;
 import jakarta.validation.Valid;
@@ -66,15 +67,12 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    @PatchMapping("/{id}/activate")
+    @PatchMapping("/{id}/status")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<UserResponseDto> activate(@PathVariable UUID id) {
-        return ResponseEntity.ok(userService.activate(id));
-    }
-
-    @PatchMapping("/{id}/deactivate")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<UserResponseDto> deactivate(@PathVariable UUID id) {
-        return ResponseEntity.ok(userService.deactivate(id));
+    public ResponseEntity<UserResponseDto> changeStatus(@PathVariable UUID id,
+                                                        @Valid @RequestBody UserStatusUpdateDto dto) {
+        return dto.getActive()
+                ? ResponseEntity.ok(userService.activate(id))
+                : ResponseEntity.ok(userService.deactivate(id));
     }
 }

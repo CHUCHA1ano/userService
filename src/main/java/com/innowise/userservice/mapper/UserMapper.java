@@ -9,7 +9,8 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 
 @Mapper(componentModel = "spring",
-        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+        nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE,
+        uses = PaymentCardMapper.class)
 public interface UserMapper {
 
     User toEntity(UserCreateDto dto);

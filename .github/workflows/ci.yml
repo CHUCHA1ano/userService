@@ -10,38 +10,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    services:
-      postgres:
-        image: postgres:15-alpine
-        env:
-          POSTGRES_DB: userdb
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: 11553303
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    env:
-      DB_URL: jdbc:postgresql://localhost:5432/userdb
-      DB_USERNAME: postgres
-      DB_PASSWORD: 11553303
-      REDIS_HOST: localhost
-      REDIS_PORT: 6379
-
     steps:
       - uses: actions/checkout@v4
 
@@ -52,8 +20,41 @@ jobs:
           java-version: '21'
           cache: maven
 
-      - name: Build and run tests
+      # Integration tests start PostgreSQL and Redis through Testcontainers; the
+      # service containers from the previous job setup are no longer needed.
+      - name: Build and run all tests (unit + integration, Docker required)
         run: mvn -B verify
+
+      - name: Check SonarCloud secrets
+        id: sonar_check
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "${SONAR_TOKEN:-}" ]; then
+            echo "SONAR_TOKEN secret is not set, skipping SonarCloud analysis"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: SonarCloud analysis
+        if: steps.sonar_check.outputs.skip != 'true'
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >-
+          mvn -B org.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar
+          -Dsonar.projectKey=CHUCHA1ano_userService
+          -Dsonar.organization=chucha1ano
+          -Dsonar.coverage.jacoco.xmlReportPaths=target/site/jacoco/jacoco.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            target/surefire-reports
+            target/failsafe-reports
+            target/site/jacoco
+          if-no-files-found: ignore
 
   docker:
     needs: build-and-test

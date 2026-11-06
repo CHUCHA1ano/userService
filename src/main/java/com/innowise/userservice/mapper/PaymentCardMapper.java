@@ -13,7 +13,7 @@ import org.mapstruct.NullValuePropertyMappingStrategy;
         nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
 public interface PaymentCardMapper {
 
-    @Mapping(target = "user.id", source = "userId")
+    @Mapping(target = "user", ignore = true)
     PaymentCard toEntity(CardCreateDto dto);
 
     @Mapping(target = "userId", source = "user.id")

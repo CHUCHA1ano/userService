@@ -7,10 +7,13 @@ import com.innowise.userservice.integration.keycloak.dto.CredentialRepresentatio
 import com.innowise.userservice.integration.keycloak.dto.KeycloakUserRequest;
 import com.innowise.userservice.integration.keycloak.dto.RoleRepresentation;
 import com.innowise.userservice.integration.keycloak.dto.TokenResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
@@ -19,6 +22,8 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.List;
@@ -35,6 +40,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class KeycloakAdminClient {
 
+    private static final Logger log = LoggerFactory.getLogger(KeycloakAdminClient.class);
+
     private static final String USER_ROLE = "USER";
     private static final String PASSWORD_CREDENTIAL = "password";
 
@@ -47,8 +54,16 @@ public class KeycloakAdminClient {
 
     public KeycloakAdminClient(KeycloakProperties properties) {
         this.properties = properties;
+        // Explicit timeouts: one hung Keycloak call must not block the request thread
+        // (and, in UserService.create, the DB connection) indefinitely.
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(5))
+                .build();
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(Duration.ofSeconds(10));
         this.restClient = RestClient.builder()
                 .baseUrl(properties.url())
+                .requestFactory(requestFactory)
                 .build();
     }
 
@@ -150,8 +165,10 @@ public class KeycloakAdminClient {
     private void deleteUserQuietly(UUID userId) {
         try {
             deleteUser(userId);
-        } catch (RuntimeException ignored) {
-            // best-effort compensation
+        } catch (RuntimeException ex) {
+            // best-effort compensation: never mask the original failure,
+            // but the ghost account must not go unnoticed
+            log.error("Failed to compensate: Keycloak user {} remains without the assigned role", userId, ex);
         }
     }
 
@@ -248,16 +265,20 @@ public class KeycloakAdminClient {
         }
     }
 
+    /**
+     * Client-visible messages are generic — the raw Keycloak response body is logged
+     * for diagnostics but never propagated to {@code GlobalExceptionHandler} callers.
+     */
     private RuntimeException translate(RestClientResponseException ex, String action) {
+        log.warn("Keycloak call \"{}\" failed with status {}: {}", action, ex.getStatusCode(),
+                ex.getResponseBodyAsString());
         if (ex.getStatusCode().value() == HttpStatus.CONFLICT.value()) {
-            if (action.startsWith("create user")) {
-                return new EmailAlreadyExistsException(
-                        "Email is already registered: " + ex.getResponseBodyAsString());
+            if (action.equals("create user")) {
+                return new EmailAlreadyExistsException("Email is already registered in Keycloak");
             }
-            return new KeycloakIntegrationException("Keycloak conflict while trying to " + action
-                    + ": " + ex.getResponseBodyAsString(), ex);
+            return new KeycloakIntegrationException("Keycloak conflict while trying to " + action, ex);
         }
         return new KeycloakIntegrationException("Keycloak failed to " + action
-                + " (" + ex.getStatusCode().value() + "): " + ex.getResponseBodyAsString(), ex);
+                + " (" + ex.getStatusCode().value() + ")", ex);
     }
 }
