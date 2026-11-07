@@ -17,10 +17,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ResourceAccessEvaluator {
 
-    /**
-     * Task-compliant claim denoting the authenticated user id. authService emits it
-     * alongside the standard {@code sub} claim.
-     */
+    /** Claim carrying the authenticated user id (emitted by authService). */
     private static final String USER_ID_CLAIM = "user_id";
 
     private final PaymentCardRepository paymentCardRepository;

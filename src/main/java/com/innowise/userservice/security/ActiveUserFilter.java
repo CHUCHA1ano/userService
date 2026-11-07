@@ -32,10 +32,7 @@ import java.util.UUID;
 public class ActiveUserFilter extends OncePerRequestFilter {
 
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
-    /**
-     * Task-compliant claim denoting the authenticated user id. authService emits it
-     * alongside the standard {@code sub} claim.
-     */
+    /** Claim carrying the authenticated user id (emitted by authService). */
     private static final String USER_ID_CLAIM = "user_id";
 
     private final UserRepository userRepository;
