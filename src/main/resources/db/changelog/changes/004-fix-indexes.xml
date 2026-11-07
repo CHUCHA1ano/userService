@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+    <changeSet id="004-fix-indexes" author="userService">
+        <!-- idx_users_email duplicates the unique constraint on users.email -->
+        <dropIndex indexName="idx_users_email" tableName="users"/>
+        <!-- no query filters on users.active alone -->
+        <dropIndex indexName="idx_users_active" tableName="users"/>
+        <!-- no query filters on payment_cards.number -->
+        <dropIndex indexName="idx_payment_cards_number" tableName="payment_cards"/>
+        <!-- replaced by the composite (user_id, active) index below -->
+        <dropIndex indexName="idx_payment_cards_user_id" tableName="payment_cards"/>
+        <createIndex indexName="idx_payment_cards_user_active" tableName="payment_cards">
+            <column name="user_id"/>
+            <column name="active"/>
+        </createIndex>
+    </changeSet>
+</databaseChangeLog>

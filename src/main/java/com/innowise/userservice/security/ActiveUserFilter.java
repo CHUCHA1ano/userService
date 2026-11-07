@@ -1,0 +1,81 @@
+package com.innowise.userservice.security;
+
+import tools.jackson.databind.ObjectMapper;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import com.innowise.userservice.repository.UserRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.time.OffsetDateTime;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Access tokens live for 15 minutes, but that is still long enough for a token issued before the
+ * user was deactivated or deleted to stay valid. This filter rejects such tokens immediately.
+ * <p>
+ * Admins are managed directly in Keycloak, therefore the local check is skipped for them.
+ */
+@Component
+@RequiredArgsConstructor
+public class ActiveUserFilter extends OncePerRequestFilter {
+
+    private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    /** Claim carrying the authenticated user id (emitted by authService). */
+    private static final String USER_ID_CLAIM = "user_id";
+
+    private final UserRepository userRepository;
+    private final ObjectMapper objectMapper;
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain) throws ServletException, IOException {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication instanceof JwtAuthenticationToken jwtAuthentication && !isAdmin(authentication)) {
+            String subject = jwtAuthentication.getToken().getClaimAsString(USER_ID_CLAIM);
+            if (!isActiveUser(subject)) {
+                SecurityContextHolder.clearContext();
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+                objectMapper.writeValue(response.getOutputStream(), Map.of(
+                        "timestamp", OffsetDateTime.now().toString(),
+                        "status", HttpStatus.UNAUTHORIZED.value(),
+                        "error", "User is inactive or does not exist"
+                ));
+                return;
+            }
+        }
+
+        filterChain.doFilter(request, response);
+    }
+
+    private boolean isActiveUser(String subject) {
+        if (subject == null) {
+            return false;
+        }
+        try {
+            return userRepository.existsByIdAndActiveTrue(UUID.fromString(subject));
+        } catch (IllegalArgumentException ex) {
+            return false;
+        }
+    }
+
+    private boolean isAdmin(Authentication authentication) {
+        return authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch(ROLE_ADMIN::equals);
+    }
+}

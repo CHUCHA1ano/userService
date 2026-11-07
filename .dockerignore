@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+*.iml
+.vscode
+target
+.env
+.gitignore
+qodana.yaml
+docker-compose.y*ml
+Dockerfile
+*.md
