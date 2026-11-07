@@ -17,11 +17,17 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ResourceAccessEvaluator {
 
+    /**
+     * Task-compliant claim denoting the authenticated user id. authService emits it
+     * alongside the standard {@code sub} claim.
+     */
+    private static final String USER_ID_CLAIM = "user_id";
+
     private final PaymentCardRepository paymentCardRepository;
 
     public boolean isSelf(UUID userId, Authentication authentication) {
         return subject(authentication)
-                .map(sub -> sub.equals(userId.toString()))
+                .map(uid -> uid.equals(userId.toString()))
                 .orElse(false);
     }
 
@@ -38,7 +44,7 @@ public class ResourceAccessEvaluator {
 
     private Optional<String> subject(Authentication authentication) {
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {
-            return Optional.ofNullable(jwtAuthentication.getToken().getSubject());
+            return Optional.ofNullable(jwtAuthentication.getToken().getClaimAsString(USER_ID_CLAIM));
         }
         return Optional.empty();
     }

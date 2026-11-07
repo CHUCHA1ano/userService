@@ -7,32 +7,21 @@ import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
-import java.util.Objects;
 
 /**
- * Maps Keycloak {@code realm_access.roles} to Spring Security authorities.
+ * Maps the task-compliant {@code role} claim (a single {@code ADMIN} or {@code USER} string emitted
+ * by the authService claims mapper) to a Spring Security authority.
  */
 public class KeycloakRoleConverter implements Converter<Jwt, Collection<GrantedAuthority>> {
 
-    private static final String REALM_ACCESS = "realm_access";
-    private static final String ROLES = "roles";
+    private static final String ROLE_CLAIM = "role";
 
     @Override
-    @SuppressWarnings("unchecked")
     public Collection<GrantedAuthority> convert(Jwt jwt) {
-        Object realmAccess = jwt.getClaims().get(REALM_ACCESS);
-        if (!(realmAccess instanceof Map<?, ?> access)) {
+        Object role = jwt.getClaims().get(ROLE_CLAIM);
+        if (role == null) {
             return List.of();
         }
-        Object roles = access.get(ROLES);
-        if (!(roles instanceof Collection<?> roleCollection)) {
-            return List.of();
-        }
-        return roleCollection.stream()
-                .filter(Objects::nonNull)
-                .map(Object::toString)
-                .map(role -> (GrantedAuthority) new SimpleGrantedAuthority("ROLE_" + role))
-                .toList();
+        return List.of(new SimpleGrantedAuthority("ROLE_" + role.toString()));
     }
 }

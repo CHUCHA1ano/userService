@@ -22,8 +22,8 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Access tokens live for 12 hours, so a stateless JWT check alone cannot detect a user that was
- * deactivated or deleted after the token was issued. This filter rejects such tokens immediately.
+ * Access tokens live for 15 minutes, but that is still long enough for a token issued before the
+ * user was deactivated or deleted to stay valid. This filter rejects such tokens immediately.
  * <p>
  * Admins are managed directly in Keycloak, therefore the local check is skipped for them.
  */
@@ -32,6 +32,11 @@ import java.util.UUID;
 public class ActiveUserFilter extends OncePerRequestFilter {
 
     private static final String ROLE_ADMIN = "ROLE_ADMIN";
+    /**
+     * Task-compliant claim denoting the authenticated user id. authService emits it
+     * alongside the standard {@code sub} claim.
+     */
+    private static final String USER_ID_CLAIM = "user_id";
 
     private final UserRepository userRepository;
     private final ObjectMapper objectMapper;
@@ -43,7 +48,7 @@ public class ActiveUserFilter extends OncePerRequestFilter {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication instanceof JwtAuthenticationToken jwtAuthentication && !isAdmin(authentication)) {
-            String subject = jwtAuthentication.getToken().getSubject();
+            String subject = jwtAuthentication.getToken().getClaimAsString(USER_ID_CLAIM);
             if (!isActiveUser(subject)) {
                 SecurityContextHolder.clearContext();
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());

@@ -5,8 +5,6 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 import java.util.Collection;
-import java.util.List;
-import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -16,24 +14,24 @@ class KeycloakRoleConverterTest {
     private final KeycloakRoleConverter converter = new KeycloakRoleConverter();
 
     @Test
-    void shouldMapRealmRolesToSpringAuthorities() {
+    void shouldMapRoleClaimToSpringAuthority() {
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
-                .claim("realm_access", Map.of("roles", List.of("ADMIN", "USER")))
+                .claim("role", "ADMIN")
                 .build();
 
         Collection<GrantedAuthority> authorities = converter.convert(jwt);
 
-        assertEquals(2, authorities.size());
-        assertTrue(authorities.stream().anyMatch(a -> a.getAuthority().equals("ROLE_ADMIN")));
-        assertTrue(authorities.stream().anyMatch(a -> a.getAuthority().equals("ROLE_USER")));
+        assertEquals(1, authorities.size());
+        assertEquals("ROLE_ADMIN", authorities.iterator().next().getAuthority());
     }
 
     @Test
-    void shouldReturnEmptyAuthoritiesWhenRealmRolesAreMissing() {
+    void shouldReturnEmptyAuthoritiesWhenRoleClaimIsMissing() {
         Jwt jwt = Jwt.withTokenValue("token")
                 .header("alg", "none")
                 .claim("sub", "user-id")
+                .claim("realm_access", java.util.Map.of("roles", java.util.List.of("ADMIN")))
                 .build();
 
         assertTrue(converter.convert(jwt).isEmpty());
